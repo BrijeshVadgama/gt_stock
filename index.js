@@ -28,6 +28,14 @@ app.use(
 
 app.use(helmet());
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: 200,
+    success: true,
+    message: "Welcome to the application",
+  });
+});
+
 // const limit = rateLimit({
 //     windowMs: 15 * 60 * 1000,
 //     limit: 100,
