@@ -12,6 +12,11 @@ import authRouter from "./routes/auth.js";
 import cleanupExpiredConnections from "./utils/cleanup.js";
 
 const app = express();
+
+// middlewares
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 cleanupExpiredConnections();
 dotEnv.config({ path: "./.env" });
 

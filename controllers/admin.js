@@ -1,8 +1,8 @@
-import { authDbConnection } from "../db.js";
+import { authDbConnection, authsequelizeInstance } from "../db.js";
 import { validationOrder } from "../validation/order.validation.js";
 import { validationOrderCart } from "../validation/orderCart.validation.js";
 
-export const getDataList = async (req, res) => {
+/* export const getDataList = async (req, res) => {
   try {
     const { search } = req.query;
     const sequelize = req.sequelize;
@@ -251,26 +251,315 @@ export const getDataList = async (req, res) => {
       .status(500)
       .json({ status: 500, success: false, message: error.message });
   }
+}; */
+
+export const getDataList = async (req, res) => {
+  try {
+    const { search } = req.query;
+    const { page = 1, limit = 10 } = req.body;
+    const offset = (page - 1) * limit;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
+
+    const query = `
+        -- Declare variables
+        DECLARE @v_GenCode NVARCHAR(50),
+                @v_ShCode NVARCHAR(50),
+                @v_BtCode NVARCHAR(50),
+                @v_MsCode NVARCHAR(50),
+                @v_DesignName NVARCHAR(100),
+                @v_CatName NVARCHAR(100),
+                @v_ShName NVARCHAR(100),
+                @v_SizeName NVARCHAR(100),
+                @v_BrandName NVARCHAR(100),
+                @v_SeriesName NVARCHAR(100),
+                @v_FGName NVARCHAR(100),
+                @v_DTName NVARCHAR(100),
+                @v_DSName NVARCHAR(100),
+                @v_PcsBox INT,
+                @v_BtBoxWt DECIMAL(18, 2),
+                @v_SqFeet NVARCHAR(100),
+                @v_SqMtr NVARCHAR(100),
+                @v_DesignAct NVARCHAR(100),
+                @v_BPName NVARCHAR(100),
+                @v_G1 DECIMAL(10, 2),
+                @v_G2 DECIMAL(10, 2),
+                @v_G3 DECIMAL(10, 2),
+                @v_G4 DECIMAL(10, 2),
+                @v_G5 DECIMAL(10, 2),
+                @v_Gtot DECIMAL(10, 2),
+                @v_OQ1 DECIMAL(10, 2),
+                @v_OQ2 DECIMAL(10, 2),
+                @v_OQ3 DECIMAL(10, 2),
+                @v_OQ4 DECIMAL(10, 2),
+                @v_OQ5 DECIMAL(10, 2),
+                @v_OQtot DECIMAL(10, 2),
+                @v_AOQ1 DECIMAL(10, 2),
+                @v_AOQ2 DECIMAL(10, 2),
+                @v_AOQ3 DECIMAL(10, 2),
+                @v_AOQ4 DECIMAL(10, 2),
+                @v_AOQ5 DECIMAL(10, 2),
+                @v_AOQtot DECIMAL(10, 2),
+                @v_SumOfG1 DECIMAL(10, 2),
+                @searchCondition NVARCHAR(100),
+                @totalCount INT;
+        
+        -- Set search condition
+        SET @searchCondition = :searchCondition;
+        
+        -- Get total count
+        SELECT @totalCount = COUNT(*)
+        FROM [csstock].[dbo].[SubDesign]
+        INNER JOIN [csstock].[dbo].[DesignName] ON SubDesign.GenCode = DesignName.GenCode
+        WHERE [csstock].[dbo].[DesignName].DesignName LIKE @searchCondition;
+
+        -- Create temporary table
+        CREATE TABLE #TempTable (
+            GenCode NVARCHAR(50),
+            ShCode NVARCHAR(50),
+            btCode NVARCHAR(50),
+            msCode NVARCHAR(50),
+            DesignName NVARCHAR(100),
+            CatName NVARCHAR(100),
+            ShName NVARCHAR(100),
+            SizeName NVARCHAR(100),
+            BrandName NVARCHAR(100),
+            SeriesName NVARCHAR(100),
+            FGName NVARCHAR(100),
+            DTName NVARCHAR(100),
+            DSName NVARCHAR(100),
+            PcsBox INT,
+            BtBoxWt DECIMAL(18, 2),
+            SqFeet NVARCHAR(100),
+            SqMtr NVARCHAR(100),
+            DesignAct NVARCHAR(100),
+            BPName NVARCHAR(100),
+            G1 DECIMAL(18, 2),
+            G2 DECIMAL(18, 2),
+            G3 DECIMAL(18, 2),
+            G4 DECIMAL(18, 2),
+            G5 DECIMAL(18, 2),
+            Gtot DECIMAL(18, 2),
+            OQ1 DECIMAL(18, 2),
+            OQ2 DECIMAL(18, 2),
+            OQ3 DECIMAL(18, 2),
+            OQ4 DECIMAL(18, 2),
+            OQ5 DECIMAL(18, 2),
+            OQtot DECIMAL(18, 2),
+            AOQ1 DECIMAL(18, 2),
+            AOQ2 DECIMAL(18, 2),
+            AOQ3 DECIMAL(18, 2),
+            AOQ4 DECIMAL(18, 2),
+            AOQ5 DECIMAL(18, 2),
+            AOQtot DECIMAL(18, 2),
+            SumOfG1 DECIMAL(18, 2)
+        );
+        
+        -- Define cursor
+        DECLARE cur CURSOR FOR
+        SELECT
+            SubDesign.GenCode,
+            SubDesign.ShCode,
+            SubDesign.BtCode,
+            SubDesign.MsCode,
+            DesignName.DesignName,
+            CatName.CatName,
+            Shade.ShName,
+            SizeName.SizeName,
+            MIN(BrandName.BrandName) AS FirstOfBrandName,
+            MIN(SeriesName.SeriesName) AS FirstOfSeriesName,
+            MIN(FinishGlaze.FGName) AS FirstOfFGName,
+            MIN(DesignType.DTName) AS FirstOfDTName,
+            MIN(DesignStatus.DSName) AS FirstOfDSName,
+            MIN(SizeName.PcsBox) AS FirstOfPcsBox,
+            MIN(SubDesign.BtBoxWt) AS FirstOfBtBoxWt,
+            MIN(SizeName.SqFeet) AS FirstOfSqFeet,
+            MIN(SizeName.SqMtr) AS FirstOfSqMtr,
+            MIN(DesignName.DesignAct) AS FirstOfDesignAct,
+            MIN(BPName.BPName) AS FirstOfBPName,
+            SUM(SubDesign.G1) AS G1,
+            SUM(SubDesign.G2) AS G2,
+            SUM(SubDesign.G3) AS G3,
+            SUM(SubDesign.G4) AS G4,
+            SUM(SubDesign.G5) AS G5,
+            SUM(SubDesign.Gtot) AS Gtot,
+            SUM(SubDesign.OQ1) AS OQ1,
+            SUM(SubDesign.OQ2) AS OQ2,
+            SUM(SubDesign.OQ3) AS OQ3,
+            SUM(SubDesign.OQ4) AS OQ4,
+            SUM(SubDesign.OQ5) AS OQ5,
+            SUM(SubDesign.OQtot) AS OQtot,
+            SUM(SubDesign.AOQ1) AS AOQ1,
+            SUM(SubDesign.AOQ2) AS AOQ2,
+            SUM(SubDesign.AOQ3) AS AOQ3,
+            SUM(SubDesign.AOQ4) AS AOQ4,
+            SUM(SubDesign.AOQ5) AS AOQ5,
+            SUM(SubDesign.AOQtot) AS AOQtot,
+            SUM(SubDesign.G1) AS SumOfG1
+        FROM
+            [csstock].[dbo].[SubDesign]
+            INNER JOIN [csstock].[dbo].[DesignName] ON SubDesign.GenCode = DesignName.GenCode
+            INNER JOIN [csstock].[dbo].[SizeName] ON DesignName.SizeCode = SizeName.SizeCode
+            INNER JOIN [csstock].[dbo].[Shade] ON SubDesign.ShCode = Shade.ShCode
+            INNER JOIN [csstock].[dbo].[BrandName] ON DesignName.BrandCode = BrandName.BrandCode
+            INNER JOIN [csstock].[dbo].[SeriesName] ON DesignName.SeriesCode = SeriesName.SeriesCode
+            INNER JOIN [csstock].[dbo].[FinishGlaze] ON DesignName.FGCode = FinishGlaze.FGCode
+            INNER JOIN [csstock].[dbo].[DesignType] ON DesignName.DTCode = DesignType.DTCode
+            INNER JOIN [csstock].[dbo].[DesignStatus] ON DesignName.DSCode = DesignStatus.DSCode
+            INNER JOIN [csstock].[dbo].[BPName] ON DesignName.BPCode = BPName.BPCode
+            INNER JOIN [csstock].[dbo].[CatName] ON DesignName.CatCode = CatName.CatCode
+        WHERE
+            [csstock].[dbo].[DesignName].DesignName LIKE @searchCondition
+        GROUP BY
+            [csstock].[dbo].[SubDesign].GenCode, SubDesign.ShCode, SubDesign.BtCode, SubDesign.MsCode, 
+            DesignName.DesignName, CatName.CatName, Shade.ShName, SizeName.SizeName
+        ORDER BY DesignName.DesignName
+        OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY;
+        
+        -- Open cursor
+        OPEN cur;
+        FETCH NEXT FROM cur INTO
+            @v_GenCode, @v_ShCode, @v_BtCode, @v_MsCode, @v_DesignName, @v_CatName, @v_ShName, @v_SizeName,
+            @v_BrandName, @v_SeriesName, @v_FGName, @v_DTName, @v_DSName, @v_PcsBox,
+            @v_BtBoxWt, @v_SqFeet, @v_SqMtr, @v_DesignAct, @v_BPName,
+            @v_G1, @v_G2, @v_G3, @v_G4, @v_G5, @v_Gtot,
+            @v_OQ1, @v_OQ2, @v_OQ3, @v_OQ4, @v_OQ5, @v_OQtot,
+            @v_AOQ1, @v_AOQ2, @v_AOQ3, @v_AOQ4, @v_AOQ5, @v_AOQtot,
+            @v_SumOfG1;
+        
+        -- Process each row
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            -- Insert into temp table
+            INSERT INTO #TempTable
+            (GenCode, ShCode, BtCode, MsCode, DesignName, CatName, ShName, SizeName, BrandName, SeriesName, FGName, DTName, DSName, PcsBox, BtBoxWt, SqFeet, SqMtr, DesignAct, BPName, G1, G2, G3, G4, G5, Gtot, OQ1, OQ2, OQ3, OQ4, OQ5, OQtot, AOQ1, AOQ2, AOQ3, AOQ4, AOQ5, AOQtot, SumOfG1)
+            VALUES
+            (@v_GenCode, @v_ShCode, @v_BtCode, @v_MsCode, @v_DesignName, @v_CatName, @v_ShName, @v_SizeName,
+             @v_BrandName, @v_SeriesName, @v_FGName, @v_DTName, @v_DSName, @v_PcsBox,
+             @v_BtBoxWt, @v_SqFeet, @v_SqMtr, @v_DesignAct, @v_BPName,
+             @v_G1, @v_G2, @v_G3, @v_G4, @v_G5, @v_Gtot,
+             @v_OQ1, @v_OQ2, @v_OQ3, @v_OQ4, @v_OQ5, @v_OQtot,
+             @v_AOQ1, @v_AOQ2, @v_AOQ3, @v_AOQ4, @v_AOQ5, @v_AOQtot, @v_SumOfG1);
+        
+            FETCH NEXT FROM cur INTO
+                @v_GenCode, @v_ShCode, @v_BtCode, @v_MsCode, @v_DesignName, @v_CatName, @v_ShName, @v_SizeName,
+                @v_BrandName, @v_SeriesName, @v_FGName, @v_DTName, @v_DSName, @v_PcsBox,
+                @v_BtBoxWt, @v_SqFeet, @v_SqMtr, @v_DesignAct, @v_BPName,
+                @v_G1, @v_G2, @v_G3, @v_G4, @v_G5, @v_Gtot,
+                @v_OQ1, @v_OQ2, @v_OQ3, @v_OQ4, @v_OQ5, @v_OQtot,
+                @v_AOQ1, @v_AOQ2, @v_AOQ3, @v_AOQ4, @v_AOQ5, @v_AOQtot,
+                @v_SumOfG1;
+        END;
+        
+        -- Close and deallocate cursor
+        CLOSE cur;
+        DEALLOCATE cur;
+        
+        -- Return results with total count
+        SELECT 
+            (SELECT * FROM #TempTable FOR JSON PATH) as results,
+            @totalCount as totalCount;
+        
+        -- Drop temp table
+        DROP TABLE #TempTable;
+    `;
+
+    const searchString = `%${search}%`;
+    const results = await sequelize.query(query, {
+      replacements: {
+        searchCondition: searchString,
+        offset: offset,
+        limit: limit,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const grQuery = `
+        SELECT * FROM [csstock].[dbo].[GrName];
+    `;
+
+    const grResult = await sequelize.query(grQuery, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Parse the JSON string from results
+    const paginatedResults = results[0].results
+      ? JSON.parse(results[0].results)
+      : [];
+    const totalRecord = results[0].totalCount || 0;
+    const totalPage = Math.ceil(totalRecord / limit);
+
+    res.status(200).json({
+      status: 200,
+      success: true,
+      totalRecord,
+      totalPage,
+      currentPage: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      data: {
+        results: paginatedResults,
+        grResult,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
 export const getDetails = async (req, res) => {
   try {
-    const { search } = req.query;
-    const sequelize = req.sequelize;
+    const { search, page = 1, limit = 10 } = req.body;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
+    const offset = (page - 1) * limit;
+
+    // Main query with pagination
     const query = `
-            SELECT BrandName.BrandName, CatName.CatName, GrName.GrName, DesignName.DesignName, DesignName.G1, DesignName.G2, DesignName.G3, DesignName.G4, DesignName.OQ1, DesignName.OQ2, DesignName.OQ3, DesignName.OQ4, DesignName.AOQ1, DesignName.AOQ2, DesignName.AOQ3, DesignName.AOQ4
-            FROM GrName, (DesignName INNER JOIN BrandName ON DesignName.BrandCode = BrandName.BrandCode) INNER JOIN CatName ON DesignName.CatCode = CatName.CatCode;
-        `;
+      SELECT BrandName.BrandName, CatName.CatName, GrName.GrName, DesignName.DesignName, 
+             DesignName.G1, DesignName.G2, DesignName.G3, DesignName.G4, 
+             DesignName.OQ1, DesignName.OQ2, DesignName.OQ3, DesignName.OQ4, 
+             DesignName.AOQ1, DesignName.AOQ2, DesignName.AOQ3, DesignName.AOQ4
+      FROM [csstock].[dbo].[GrName], 
+           ([csstock].[dbo].[DesignName] 
+           INNER JOIN [csstock].[dbo].[BrandName] ON DesignName.BrandCode = BrandName.BrandCode) 
+           INNER JOIN [csstock].[dbo].[CatName] ON DesignName.CatCode = CatName.CatCode
+      ORDER BY DesignName.DesignName
+      OFFSET ${offset} ROWS
+      FETCH NEXT ${limit} ROWS ONLY;
+    `;
 
     const results = await sequelize.query(query, {
       type: sequelize.QueryTypes.SELECT,
     });
 
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) AS totalCount
+      FROM [csstock].[dbo].[GrName], 
+           ([csstock].[dbo].[DesignName] 
+           INNER JOIN [csstock].[dbo].[BrandName] ON DesignName.BrandCode = BrandName.BrandCode) 
+           INNER JOIN [csstock].[dbo].[CatName] ON DesignName.CatCode = CatName.CatCode;
+    `;
+
+    const totalCountResult = await sequelize.query(countQuery, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const totalRecords = totalCountResult[0]?.totalCount || 0;
+
     res.status(200).json({
       status: 200,
       success: true,
-      count: results.length,
+      totalRecords,
+      currentPage: Number(page),
+      totalPages: Math.ceil(totalRecords / limit),
+      limit,
       data: results,
     });
   } catch (error) {
@@ -283,187 +572,253 @@ export const getDetails = async (req, res) => {
 
 export const filterStockDetails = async (req, res) => {
   try {
-    const sequelize = req.sequelize;
-    const { search, searchType, g1, g2, g3, g4, aoq1, aoq2, aoq3, aoq4 } =
-      req.query;
-    let whereClause = "1=1";
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
+
+    let {
+      prdtCode,
+      brandCode,
+      bpCode,
+      sizeCode,
+      catCode,
+      fgCode,
+      seriesCode,
+      designType,
+      dsCode,
+      cptCode,
+      msCode,
+      btCode,
+      cCode,
+      page = 1,
+      limit = 10,
+    } = req.body;
+
+    // Convert params to arrays if not already
+    prdtCode = prdtCode
+      ? Array.isArray(prdtCode)
+        ? prdtCode
+        : [prdtCode]
+      : [];
+    brandCode = brandCode
+      ? Array.isArray(brandCode)
+        ? brandCode
+        : [brandCode]
+      : [];
+    bpCode = bpCode ? (Array.isArray(bpCode) ? bpCode : [bpCode]) : [];
+    sizeCode = sizeCode
+      ? Array.isArray(sizeCode)
+        ? sizeCode
+        : [sizeCode]
+      : [];
+    catCode = catCode ? (Array.isArray(catCode) ? catCode : [catCode]) : [];
+    fgCode = fgCode ? (Array.isArray(fgCode) ? fgCode : [fgCode]) : [];
+    seriesCode = seriesCode
+      ? Array.isArray(seriesCode)
+        ? seriesCode
+        : [seriesCode]
+      : [];
+    designType = designType
+      ? Array.isArray(designType)
+        ? designType
+        : [designType]
+      : [];
+    dsCode = dsCode ? (Array.isArray(dsCode) ? dsCode : [dsCode]) : [];
+    cptCode = cptCode ? (Array.isArray(cptCode) ? cptCode : [cptCode]) : [];
+    msCode = msCode ? (Array.isArray(msCode) ? msCode : [msCode]) : [];
+    btCode = btCode ? (Array.isArray(btCode) ? btCode : [btCode]) : [];
+    cCode = cCode ? (Array.isArray(cCode) ? cCode : [cCode]) : [];
+
+    // Pagination calculation
+    const offset = (page - 1) * limit;
+
+    let conditions = [];
     let replacements = {};
-    let havingClause = "";
-    // Declare havingConditions array before using it.
-    let havingConditions = [];
 
-    if (search) {
-      whereClause += ` AND (
-                DN.DesignName  LIKE :search OR
-                DN.DesignAct  LIKE :search OR
-                DN.MchNo       LIKE :search OR
-                BN.BrandName   LIKE :search OR
-                SN.SeriesName  LIKE :search OR
-                FG.FGName      LIKE :search OR
-                DT.DTName      LIKE :search OR
-                DS.DSName      LIKE :search OR
-                BP.BPName      LIKE :search OR
-                CN.CatName     LIKE :search OR
-                MS.MsName      LIKE :search OR
-                B.BtName       LIKE :search OR
-                C.CptName      LIKE :search OR
-                PN.PrdtName    LIKE :search OR
-                SZ.SizeName    LIKE :search OR
-                SN.SeriesName  LIKE :search OR
-                CustN.CName    LIKE :search OR
-                CustN.CCtName  LIKE :search
-            )`;
-      replacements["search"] = `%${search}%`;
+    if (prdtCode.length > 0) {
+      conditions.push(`pn.PrdtCode IN (:prdtCode)`);
+      replacements.prdtCode = prdtCode;
     }
 
-    // Build HAVING clause only if searchType is provided and at least one of the individual aggregated filters exists.
-    if (searchType === "CU") {
-      if (g1 || g2 || g3 || g4) {
-        if (g1) {
-          havingConditions.push("SUM(SD.G1) = :g1");
-          replacements["g1"] = g1;
-        }
-        if (g2) {
-          havingConditions.push("SUM(SD.G2) = :g2");
-          replacements["g2"] = g2;
-        }
-        if (g3) {
-          havingConditions.push("SUM(SD.G3) = :g3");
-          replacements["g3"] = g3;
-        }
-        if (g4) {
-          havingConditions.push("SUM(SD.G4) = :g4");
-          replacements["g4"] = g4;
-        }
-      }
-    } else if (searchType === "AF") {
-      if (aoq1 || aoq2 || aoq3 || aoq4) {
-        if (aoq1) {
-          havingConditions.push("SUM(SD.AOQ1) = :aoq1");
-          replacements["aoq1"] = aoq1;
-        }
-        if (aoq2) {
-          havingConditions.push("SUM(SD.AOQ2) = :aoq2");
-          replacements["aoq2"] = aoq2;
-        }
-        if (aoq3) {
-          havingConditions.push("SUM(SD.AOQ3) = :aoq3");
-          replacements["aoq3"] = aoq3;
-        }
-        if (aoq4) {
-          havingConditions.push("SUM(SD.AOQ4) = :aoq4");
-          replacements["aoq4"] = aoq4;
-        }
-      }
+    if (brandCode.length > 0) {
+      conditions.push(`bn.BrandCode IN (:brandCode)`);
+      replacements.brandCode = brandCode;
     }
 
-    if (havingConditions.length > 0) {
-      havingClause = " HAVING " + havingConditions.join(" AND ");
+    if (bpCode.length > 0) {
+      conditions.push(`bxn.BPCode IN (:bpCode)`);
+      replacements.bpCode = bpCode;
     }
-    const query = `
-           SELECT
-                SD.GenCode,
-                CustN.CName,
-                CustN.CCode,
-                CustN.CCtName,
-                SD.ShCode,
-                SD.BtCode,
-                SD.MsCode,
-                DN.DesignName,
-                CN.CatName,
-                SH.ShName,
-                SZ.SizeName,
-                MIN(BN.BrandName)   AS FirstOfBrandName,
-                MIN(SN.SeriesName)  AS FirstOfSeriesName,
-                MIN(FG.FGName)      AS FirstOfFGName,
-                MIN(DT.DTName)      AS FirstOfDTName,
-                MIN(DS.DSName)      AS FirstOfDSName,
-                MIN(SZ.PcsBox)      AS FirstOfPcsBox,
-                MIN(SD.BtBoxWt)     AS FirstOfBtBoxWt,
-                MIN(SZ.SqFeet)      AS FirstOfSqFeet,
-                MIN(SZ.SqMtr)       AS FirstOfSqMtr,
-                MIN(DN.DesignAct)   AS FirstOfDesignAct,
-                MIN(BP.BPName)      AS FirstOfBPName,
-                MIN(MS.MsName)      AS FirstOfMsName,
-                MIN(B.BtName)       AS FirstOfBtName,
-                MIN(C.CptName)      AS FirstOfCptName,
-                MIN(PN.PrdtName)    AS FirstOfPrdtName,
-                SUM(SD.G1)          AS G1,
-                SUM(SD.G2)          AS G2,
-                SUM(SD.G3)          AS G3,
-                SUM(SD.G4)          AS G4,
-                SUM(SD.G5)          AS G5,
-                SUM(SD.Gtot)        AS Gtot,
-                SUM(SD.OQ1)         AS OQ1,
-                SUM(SD.OQ2)         AS OQ2,
-                SUM(SD.OQ3)         AS OQ3,
-                SUM(SD.OQ4)         AS OQ4,
-                SUM(SD.OQ5)         AS OQ5,
-                SUM(SD.OQtot)       AS OQtot,
-                SUM(SD.AOQ1)        AS AOQ1,
-                SUM(SD.AOQ2)        AS AOQ2,
-                SUM(SD.AOQ3)        AS AOQ3,
-                SUM(SD.AOQ4)        AS AOQ4,
-                SUM(SD.AOQ5)        AS AOQ5,
-                SUM(SD.AOQtot)      AS AOQtot,
-                SUM(SD.G1)          AS SumOfG1
-            FROM
-                SubDesign AS SD
-                INNER JOIN DesignName AS DN ON SD.GenCode = DN.GenCode
-                INNER JOIN CustDesign AS CD ON CD.GenCode = DN.GenCode
-                INNER JOIN CustName AS CustN ON CustN.CCode = CD.CCode
-                INNER JOIN SizeName AS SZ ON DN.SizeCode = SZ.SizeCode
-                INNER JOIN Shade AS SH ON SD.ShCode = SH.ShCode
-                INNER JOIN BrandName AS BN ON DN.BrandCode = BN.BrandCode
-                INNER JOIN SeriesName AS SN ON DN.SeriesCode = SN.SeriesCode
-                INNER JOIN FinishGlaze AS FG ON DN.FGCode = FG.FGCode
-                INNER JOIN DesignType AS DT ON DN.DTCode = DT.DTCode
-                INNER JOIN DesignStatus AS DS ON DN.DSCode = DS.DSCode
-                INNER JOIN BPName AS BP ON DN.BPCode = BP.BPCode
-                INNER JOIN CatName AS CN ON DN.CatCode = CN.CatCode
-                INNER JOIN MfgStatus AS MS ON SD.MsCode = MS.MsCode
-                INNER JOIN Batch AS B ON SD.BtCode = B.BtCode
-                INNER JOIN Concept AS C ON DN.CptCode = C.CptCode
-                INNER JOIN PrdtName AS PN ON DN.PrdtCode = PN.PrdtCode
-            WHERE ${whereClause}
-            GROUP BY
-                SD.GenCode,
-                SD.ShCode,
-                SD.BtCode,
-                SD.MsCode,
-                DN.DesignName,
-                CN.CatName,
-                SH.ShName,
-                SZ.SizeName,
-                CustN.CName,
-                CustN.CCtName,
-                CustN.CCode
-                ${havingClause};
-        `;
 
-    const results = await sequelize.query(query, {
-      type: sequelize.QueryTypes.SELECT,
+    if (sizeCode.length > 0) {
+      conditions.push(`sn.SizeCode IN (:sizeCode)`);
+      replacements.sizeCode = sizeCode;
+    }
+
+    if (catCode.length > 0) {
+      conditions.push(`cn.CatCode IN (:catCode)`);
+      replacements.catCode = catCode;
+    }
+
+    if (fgCode.length > 0) {
+      conditions.push(`fg.FGCode IN (:fgCode)`);
+      replacements.fgCode = fgCode;
+    }
+
+    if (seriesCode.length > 0) {
+      conditions.push(`sen.SeriesCode IN (:seriesCode)`);
+      replacements.seriesCode = seriesCode;
+    }
+
+    if (designType.length > 0) {
+      conditions.push(`dt.DTCode IN (:designType)`);
+      replacements.designType = designType;
+    }
+
+    if (dsCode.length > 0) {
+      conditions.push(`ds.DSCode IN (:dsCode)`);
+      replacements.dsCode = dsCode;
+    }
+
+    if (cptCode.length > 0) {
+      conditions.push(`c.CptCode IN (:cptCode)`);
+      replacements.cptCode = cptCode;
+    }
+
+    if (msCode.length > 0) {
+      conditions.push(`ms.MsCode IN (:msCode)`);
+      replacements.msCode = msCode;
+    }
+
+    if (btCode.length > 0) {
+      conditions.push(`b.BtCode IN (:btCode)`);
+      replacements.btCode = btCode;
+    }
+
+    if (cCode.length > 0) {
+      conditions.push(`csn.CCode IN (:cCode)`);
+      replacements.cCode = cCode;
+    }
+
+    // Get total record count before applying pagination
+    let countQuery = `
+      SELECT COUNT(*) AS totalRecords
+      FROM [csstock].[dbo].[DesignName] dn
+      LEFT JOIN [csstock].[dbo].[PrdtName] pn 
+        ON dn.PrdtCode = pn.PrdtCode
+      LEFT JOIN [csstock].[dbo].[BrandName] bn 
+        ON bn.BrandCode = dn.BrandCode
+      LEFT JOIN [csstock].[dbo].[BPName] bxn 
+        ON bxn.BPCode = dn.BPCode
+      LEFT JOIN [csstock].[dbo].[SizeName] sn 
+        ON sn.SizeCode = dn.SizeCode
+      LEFT JOIN [csstock].[dbo].[CatName] cn 
+        ON cn.CatCode = dn.CatCode
+      LEFT JOIN [csstock].[dbo].[FinishGlaze] fg 
+        ON fg.FGCode = dn.FGCode
+      LEFT JOIN [csstock].[dbo].[SeriesName] sen 
+        ON sen.SeriesCode = dn.SeriesCode
+      LEFT JOIN [csstock].[dbo].[DesignType] dt 
+        ON dt.DTCode = dn.DTCode
+      LEFT JOIN [csstock].[dbo].[DesignStatus] ds 
+        ON ds.DSCode = dn.DSCode
+      LEFT JOIN [csstock].[dbo].[Concept] c 
+        ON c.CptCode = dn.CptCode
+      LEFT JOIN [csstock].[dbo].[SubDesign] sd 
+        ON dn.GenCode = sd.GenCode
+      LEFT JOIN [csstock].[dbo].[MfgStatus] ms 
+        ON ms.MsCode = sd.MsCode
+      LEFT JOIN [csstock].[dbo].[Batch] b 
+        ON b.BtCode = sd.BtCode
+      LEFT JOIN [csstock].[dbo].[CustDesign] cd 
+        ON cd.GenCode = dn.GenCode
+      LEFT JOIN [csstock].[dbo].[CustName] csn 
+        ON csn.CCode = cd.CCode
+    `;
+
+    if (conditions.length > 0) {
+      countQuery += ` WHERE ` + conditions.join(" AND ");
+    }
+
+    const totalCountResult = await sequelize.query(countQuery, {
       replacements,
+      type: sequelize.QueryTypes.SELECT,
     });
 
+    const totalRecords = totalCountResult[0].totalRecords;
+
+    // Build main query with pagination
+    let query = `
+      SELECT dn.*, pn.*, bn.*, bxn.*, sn.*, cn.*, fg.*, sen.*, dt.*, ds.*, c.*, sd.*, ms.*, b.*, cd.*, csn.*
+      FROM [csstock].[dbo].[DesignName] dn
+      LEFT JOIN [csstock].[dbo].[PrdtName] pn 
+        ON dn.PrdtCode = pn.PrdtCode
+      LEFT JOIN [csstock].[dbo].[BrandName] bn 
+        ON bn.BrandCode = dn.BrandCode
+      LEFT JOIN [csstock].[dbo].[BPName] bxn 
+        ON bxn.BPCode = dn.BPCode
+      LEFT JOIN [csstock].[dbo].[SizeName] sn 
+        ON sn.SizeCode = dn.SizeCode
+      LEFT JOIN [csstock].[dbo].[CatName] cn 
+        ON cn.CatCode = dn.CatCode
+      LEFT JOIN [csstock].[dbo].[FinishGlaze] fg 
+        ON fg.FGCode = dn.FGCode
+      LEFT JOIN [csstock].[dbo].[SeriesName] sen 
+        ON sen.SeriesCode = dn.SeriesCode
+      LEFT JOIN [csstock].[dbo].[DesignType] dt 
+        ON dt.DTCode = dn.DTCode
+      LEFT JOIN [csstock].[dbo].[DesignStatus] ds 
+        ON ds.DSCode = dn.DSCode
+      LEFT JOIN [csstock].[dbo].[Concept] c 
+        ON c.CptCode = dn.CptCode
+      LEFT JOIN [csstock].[dbo].[SubDesign] sd 
+        ON dn.GenCode = sd.GenCode
+      LEFT JOIN [csstock].[dbo].[MfgStatus] ms 
+        ON ms.MsCode = sd.MsCode
+      LEFT JOIN [csstock].[dbo].[Batch] b 
+        ON b.BtCode = sd.BtCode
+      LEFT JOIN [csstock].[dbo].[CustDesign] cd 
+        ON cd.GenCode = dn.GenCode
+      LEFT JOIN [csstock].[dbo].[CustName] csn 
+        ON csn.CCode = cd.CCode
+    `;
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(" AND ");
+    }
+
+    query += ` ORDER BY dn.PrdtCode OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`;
+
+    // Execute query
+    const responseData = await sequelize.query(query, {
+      replacements: { ...replacements, offset, limit },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Return response with pagination
     res.status(200).json({
       status: 200,
       success: true,
-      count: results.length,
-      data: results,
+      totalRecords,
+      currentPage: Number(page),
+      totalPages: Math.ceil(totalRecords / limit),
+      limit,
+      data: responseData,
     });
   } catch (error) {
-    console.error("Error executing SQL:", error);
-    res
-      .status(500)
-      .json({ status: 500, success: false, message: "Internal Server Error" });
+    console.error(error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      message: error.message,
+    });
   }
 };
 
 export const stockDetails = async (req, res) => {
   try {
     const { gencode } = req.params;
-    const sequelize = req.sequelize;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
     // First Query: Fetch Brand-wise Stock Summary
     const stockQuery = `
@@ -479,10 +834,10 @@ export const stockDetails = async (req, res) => {
                 SUM(SD.AOQ3) AS TotalAOQ3,
                 SUM(SD.AOQ4) AS TotalAOQ4
             FROM 
-                SubDesign SD
-                INNER JOIN DesignName DN ON SD.GenCode = DN.GenCode
-                INNER JOIN BrandName BN ON DN.BrandCode = BN.BrandCode
-                INNER JOIN Batch BT ON SD.BtCode = BT.BtCode
+              [csstock].[dbo].[SubDesign] SD
+                INNER JOIN [csstock].[dbo].[DesignName] DN ON SD.GenCode = DN.GenCode
+                INNER JOIN [csstock].[dbo].[BrandName] BN ON DN.BrandCode = BN.BrandCode
+                INNER JOIN [csstock].[dbo].[Batch] BT ON SD.BtCode = BT.BtCode
             WHERE
                 SD.GenCode = :gencode
                 AND BT.BtName <> 'ZX'
@@ -509,11 +864,11 @@ export const stockDetails = async (req, res) => {
                 SUM(SD.AOQ4) AS SumAOQ4,
                 SUM(SD.AOQtot) AS SumAOQtot
             FROM 
-                SubDesign SD
-                INNER JOIN DesignName DN ON SD.GenCode = DN.GenCode
-                INNER JOIN BrandName BN ON DN.BrandCode = BN.BrandCode
-                INNER JOIN Shade SH ON SD.ShCode = SH.ShCode
-                INNER JOIN Batch BT ON SD.BtCode = BT.BtCode
+                [csstock].[dbo].[SubDesign] SD
+                INNER JOIN [csstock].[dbo].[DesignName] DN ON SD.GenCode = DN.GenCode
+                INNER JOIN [csstock].[dbo].[BrandName] BN ON DN.BrandCode = BN.BrandCode
+                INNER JOIN [csstock].[dbo].[Shade] SH ON SD.ShCode = SH.ShCode
+                INNER JOIN [csstock].[dbo].[Batch] BT ON SD.BtCode = BT.BtCode
             WHERE
                 SD.GenCode = :gencode
                 AND BT.BtName <> 'ZX'
@@ -622,142 +977,77 @@ ORDER BY
 // sename details like name total_order not_ready,half,ready
 export const seNameDetails = async (req, res) => {
   try {
-    const sequelize = req.sequelize;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
-    const query = `
-            SELECT 
-    SEName.SEName,
-    COUNT(OrdMast.OrdNo) AS TotalOrderCount,
-    SUM(OrdMast.CTotQty) AS TotalOrderQty,
-    SUM(CASE WHEN OrdMast.OStatus = 'Ready' THEN 1 ELSE 0 END) AS ReadyOrderCount,
-    SUM(CASE WHEN OrdMast.OStatus = 'Ready' THEN OrdMast.CTotQty ELSE 0 END) AS ReadyOrderQty,
-    SUM(CASE WHEN OrdMast.OStatus = 'HalfReady' THEN 1 ELSE 0 END) AS HalfReadyOrderCount,
-    SUM(CASE WHEN OrdMast.OStatus = 'HalfReady' THEN OrdMast.CTotQty ELSE 0 END) AS HalfReadyOrderQty,
-    SUM(CASE WHEN OrdMast.OStatus = 'NotReady' THEN 1 ELSE 0 END) AS NotReadyOrderCount,
-    SUM(CASE WHEN OrdMast.OStatus = 'NotReady' THEN OrdMast.CTotQty ELSE 0 END) AS NotReadyOrderQty
-FROM 
-    (OrdMast 
-    INNER JOIN CustName ON OrdMast.CCode = CustName.CCode)
-    INNER JOIN SEName ON CustName.SECode = SEName.SECode
-GROUP BY 
-    SEName.SEName;
-        `;
+    const { search, page = 1, limit = 10 } = req.body;
+    const offset = (page - 1) * limit;
+
+    // Get total record count
+    let totalRecordQuery = `
+        SELECT COUNT(DISTINCT SEName.SEName) AS totalRecord
+        FROM [csstock].[dbo].[OrdMast]
+        INNER JOIN [csstock].[dbo].[CustName] ON OrdMast.CCode = CustName.CCode
+        INNER JOIN [csstock].[dbo].[SEName] ON CustName.SECode = SEName.SECode
+    `;
+
+    if (search) {
+      totalRecordQuery += ` WHERE SEName.SEName LIKE :search `;
+    }
+
+    const totalRecordResult = await sequelize.query(totalRecordQuery, {
+      replacements: {
+        search: `%${search}%`,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const totalRecord = totalRecordResult[0]?.totalRecord || 0;
+    const totalPage = Math.ceil(totalRecord / limit);
+
+    // Main query with pagination
+    let query = `
+        SELECT 
+            SEName.SEName,
+            COUNT(OrdMast.OrdNo) AS TotalOrderCount,
+            SUM(OrdMast.CTotQty) AS TotalOrderQty,
+            SUM(CASE WHEN OrdMast.OStatus = 'Ready' THEN 1 ELSE 0 END) AS ReadyOrderCount,
+            SUM(CASE WHEN OrdMast.OStatus = 'Ready' THEN OrdMast.CTotQty ELSE 0 END) AS ReadyOrderQty,
+            SUM(CASE WHEN OrdMast.OStatus = 'HalfReady' THEN 1 ELSE 0 END) AS HalfReadyOrderCount,
+            SUM(CASE WHEN OrdMast.OStatus = 'HalfReady' THEN OrdMast.CTotQty ELSE 0 END) AS HalfReadyOrderQty,
+            SUM(CASE WHEN OrdMast.OStatus = 'NotReady' THEN 1 ELSE 0 END) AS NotReadyOrderCount,
+            SUM(CASE WHEN OrdMast.OStatus = 'NotReady' THEN OrdMast.CTotQty ELSE 0 END) AS NotReadyOrderQty
+        FROM 
+            [csstock].[dbo].[OrdMast]
+            INNER JOIN [csstock].[dbo].[CustName] ON OrdMast.CCode = CustName.CCode
+            INNER JOIN [csstock].[dbo].[SEName] ON CustName.SECode = SEName.SECode
+    `;
+
+    if (search) {
+      query += ` WHERE SEName.SEName LIKE :search `;
+    }
+
+    query += `
+        GROUP BY SEName.SEName
+        ORDER BY SEName.SEName
+        OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;
+    `;
 
     const results = await sequelize.query(query, {
+      replacements: {
+        search: `%${search}%`,
+      },
       type: sequelize.QueryTypes.SELECT,
     });
 
     res.status(200).json({
       status: 200,
       success: true,
-      count: results.length,
+      totalRecord,
+      totalPage,
+      currentPage: parseInt(page, 10),
+      limit: parseInt(limit, 10),
       data: results,
-    });
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ status: 500, success: false, message: error.message });
-  }
-};
-
-export const getOrderFilterDetails = async (req, res) => {
-  try {
-    const sequelize = req.sequelize;
-    const { search, OdateFrom, OdateTo, PLdateFrom, PLdateTo } = req.query;
-    let whereClause = "1=1";
-    let replacements = {};
-
-    // Date range condition for Odate (assuming Odate is a datetime type)
-    if (OdateFrom) {
-      whereClause += ` AND om.Odate >= :OdateFrom`;
-      replacements["OdateFrom"] = OdateFrom;
-    }
-    if (OdateTo) {
-      whereClause += ` AND om.Odate <= :OdateTo`;
-      replacements["OdateTo"] = OdateTo;
-    }
-
-    // Date range condition for PLdate (if PLdate is stored as a string in a date format, cast it to datetime)
-    if (PLdateFrom) {
-      whereClause += ` AND TRY_CAST(om.PLdate AS datetime) >= :PLdateFrom`;
-      replacements["PLdateFrom"] = PLdateFrom;
-    }
-    if (PLdateTo) {
-      whereClause += ` AND TRY_CAST(om.PLdate AS datetime) <= :PLdateTo`;
-      replacements["PLdateTo"] = PLdateTo;
-    }
-
-    // If the search parameter exists, add a condition to search across multiple columns.
-    if (search) {
-      whereClause += ` AND (
-                om.OrdNo LIKE :search OR 
-                om.OrdNoC LIKE :search OR 
-                om.OCName LIKE :search OR 
-                om.OStatus LIKE :search OR
-                om.OACode LIKE :search OR
-                om.PLMark LIKE :search OR
-                cn.CName LIKE :search OR 
-                cn.StName LIKE :search OR 
-                cn.CCtName LIKE :search OR 
-                cn.CAct LIKE :search OR 
-                se.SEName LIKE :search OR 
-                ot.OType LIKE :search OR
-                ref.RefName LIKE :search OR
-                gn.GrpName LIKE :search OR
-                an.AreaName LIKE :search OR
-                asm.ASM LIKE :search OR
-                rsm.RSM LIKE :search OR
-                gm.GM LIKE :search OR
-                ln.LevelName LIKE :search OR
-                tt.TrType LIKE :search 
-            )`;
-      replacements["search"] = `%${search}%`;
-    }
-
-    const query = `
-            SELECT 
-                om.*, 
-                cn.*, 
-                se.*, 
-                osi.*, 
-                sd.*, 
-                ot.OType,
-                an.AreaName,
-                gn.GrpName,
-                ref.RefName,
-                asm.ASM,
-                rsm.RSM,
-                gm.GM,
-                ln.LevelName,
-                tt.TrType
-            FROM OrdMast om
-            LEFT JOIN CustName cn ON om.CCode = cn.CCode
-            LEFT JOIN SEName se ON om.OACode = se.SECode
-            LEFT JOIN OrdSubItem osi ON om.OrdNo = osi.OrdNo
-            LEFT JOIN SubDesign sd ON osi.GenSrNo = sd.GenSrNo
-            LEFT JOIN OType ot ON om.OType = ot.OType
-            LEFT JOIN AreaName an ON cn.AreaCode = an.AreaCode
-            LEFT JOIN GroupName gn ON cn.GrpCode = gn.GrpCode
-            LEFT JOIN ASM asm ON se.ASMCode = asm.ASMCode
-            LEFT JOIN RSM rsm ON asm.RSMCode = rsm.RSMCode
-            LEFT JOIN RefName ref ON ref.RefCode = cn.RefCode
-            LEFT JOIN GM gm ON rsm.GMCode = gm.GMCode
-            LEFT JOIN LevelName ln ON cn.LevelCode = ln.LevelCode
-            LEFT JOIN TrType tt ON om.TrType = tt.TrType
-            WHERE ${whereClause}
-        `;
-
-    const responseData = await sequelize.query(query, {
-      replacements,
-      type: sequelize.QueryTypes.SELECT,
-    });
-
-    res.status(200).json({
-      status: 200,
-      success: true,
-      count: responseData.length,
-      data: responseData,
     });
   } catch (error) {
     console.error(error);
@@ -769,41 +1059,257 @@ export const getOrderFilterDetails = async (req, res) => {
   }
 };
 
+export const getOrderFilterDetails = async (req, res) => {
+  try {
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
+
+    // Handle query params as arrays or default to empty arrays
+    let {
+      city,
+      PlaceState,
+      OType,
+      OCName,
+      OACode,
+      OdateFrom,
+      OdateTo,
+      PLdateFrom,
+      PLdateTo,
+      TrType,
+      GroupCode,
+      LevelCode,
+      search,
+      page = 1,
+      limit = 10,
+    } = req.body;
+
+    const offset = (page - 1) * limit;
+
+    // Convert query params to arrays where necessary
+    city = city ? (Array.isArray(city) ? city : [city]) : [];
+    PlaceState = PlaceState
+      ? Array.isArray(PlaceState)
+        ? PlaceState
+        : [PlaceState]
+      : [];
+    OType = OType ? (Array.isArray(OType) ? OType : [OType]) : [];
+    OCName = OCName ? (Array.isArray(OCName) ? OCName : [OCName]) : [];
+    OACode = OACode ? (Array.isArray(OACode) ? OACode : [OACode]) : [];
+    TrType = TrType ? (Array.isArray(TrType) ? TrType : [TrType]) : [];
+    GroupCode = GroupCode
+      ? Array.isArray(GroupCode)
+        ? GroupCode
+        : [GroupCode]
+      : [];
+    LevelCode = LevelCode
+      ? Array.isArray(LevelCode)
+        ? LevelCode
+        : [LevelCode]
+      : [];
+
+    // Start building the query
+    let query = `
+      SELECT DISTINCT om.*, oa.*, cn.*, gn.*, ln.*
+      FROM [csstock].[dbo].[OrdMast] om
+      LEFT JOIN [csstock].[dbo].[OAction] oa
+        ON om.OACode = oa.OACode
+      LEFT JOIN [csstock].[dbo].[CustName] cn
+        ON cn.CCode = om.CCode
+      LEFT JOIN [csstock].[dbo].[GroupName] gn
+        ON cn.GrpCode = gn.GrpCode
+      LEFT JOIN [csstock].[dbo].[LevelName] ln
+        ON cn.LevelCode = ln.LevelCode 
+    `;
+
+    let conditions = [];
+    let replacements = {};
+
+    // Filter conditions
+    if (city.length > 0) {
+      conditions.push(`om.OCity IN (:city)`);
+      replacements.city = city;
+    }
+    if (PlaceState.length > 0) {
+      conditions.push(`om.PlaceState IN (:PlaceState)`);
+      replacements.PlaceState = PlaceState;
+    }
+    if (OType.length > 0) {
+      conditions.push(`om.OType IN (:OType)`);
+      replacements.OType = OType;
+    }
+    if (OCName.length > 0) {
+      conditions.push(`om.OCName IN (:OCName)`);
+      replacements.OCName = OCName;
+    }
+    if (OACode.length > 0) {
+      conditions.push(`om.OACode IN (:OACode)`);
+      replacements.OACode = OACode;
+    }
+    if (OdateFrom) {
+      conditions.push(`om.Odate >= :OdateFrom`);
+      replacements.OdateFrom = OdateFrom;
+    }
+    if (OdateTo) {
+      conditions.push(`om.Odate <= :OdateTo`);
+      replacements.OdateTo = OdateTo;
+    }
+    if (PLdateFrom) {
+      conditions.push(`TRY_CAST(om.PLdate AS datetime) >= :PLdateFrom`);
+      replacements.PLdateFrom = PLdateFrom;
+    }
+    if (PLdateTo) {
+      conditions.push(`TRY_CAST(om.PLdate AS datetime) <= :PLdateTo`);
+      replacements.PLdateTo = PLdateTo;
+    }
+    if (TrType.length > 0) {
+      conditions.push(`om.TrType IN (:TrType)`);
+      replacements.TrType = TrType;
+    }
+    if (GroupCode.length > 0) {
+      conditions.push(`gn.GrpCode IN (:GroupCode)`);
+      replacements.GroupCode = GroupCode;
+    }
+    if (LevelCode.length > 0) {
+      conditions.push(`ln.LevelCode IN (:LevelCode)`);
+      replacements.LevelCode = LevelCode;
+    }
+
+    // Search filter (if provided)
+    if (search) {
+      conditions.push(`(
+        om.OACode LIKE :search OR
+        cn.CName LIKE :search OR
+        gn.GrpName LIKE :search OR
+        ln.LevelName LIKE :search
+      )`);
+      replacements.search = `%${search}%`;
+    }
+
+    // Add WHERE clause if any conditions exist
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(" AND ");
+    }
+
+    // Order results by order date in descending order
+    query += ` ORDER BY om.Odate DESC`;
+
+    // Add pagination
+    query += ` OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`;
+
+    replacements.offset = offset;
+    replacements.limit = parseInt(limit);
+
+    // Execute the query using sequelize
+    const responseData = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+      replacements,
+    });
+
+    // Get total count for pagination info
+    const countQuery = `
+      SELECT COUNT(*) AS totalCount
+      FROM [csstock].[dbo].[OrdMast] om
+      LEFT JOIN [csstock].[dbo].[OAction] oa
+        ON om.OACode = oa.OACode
+      LEFT JOIN [csstock].[dbo].[CustName] cn
+        ON cn.CCode = om.CCode
+      LEFT JOIN [csstock].[dbo].[GroupName] gn
+        ON cn.GrpCode = gn.GrpCode
+      LEFT JOIN [csstock].[dbo].[LevelName] ln
+        ON cn.LevelCode = ln.LevelCode
+      ${conditions.length > 0 ? `WHERE ` + conditions.join(" AND ") : ""}
+    `;
+
+    const totalCountResult = await sequelize.query(countQuery, {
+      type: sequelize.QueryTypes.SELECT,
+      replacements,
+    });
+    const totalCount = totalCountResult[0]?.totalCount || 0;
+
+    // Return the response
+    res.status(200).json({
+      status: 200,
+      success: true,
+      totalRecords: totalCount,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(totalCount / limit),
+      limit,
+      data: responseData,
+    });
+  } catch (error) {
+    console.error(error);
+    // Handle any errors and return a 500 response
+    res.status(500).json({
+      status: 500,
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 // get all order
 export const getOrderDetails = async (req, res) => {
   try {
-    const sequelize = req.sequelize;
-    const { search } = req.query;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
+
+    const { search, page = 1, limit = 10 } = req.body;
+    const offset = (page - 1) * limit;
+
+    // Get total record count first
+    let totalRecordQuery = `
+        SELECT COUNT(DISTINCT OrdMast.OrdNo) AS totalRecord
+        FROM [csstock].[dbo].[OrdMast]
+        INNER JOIN [csstock].[dbo].[CustName] ON OrdMast.CCode = CustName.CCode
+        INNER JOIN [csstock].[dbo].[SEName] ON CustName.SECode = SEName.SECode
+        INNER JOIN [csstock].[dbo].[OrdSubItem] ON OrdMast.OrdNo = OrdSubItem.OrdNo
+        INNER JOIN [csstock].[dbo].[SubDesign] ON OrdSubItem.GenSrNo = SubDesign.GenSrNo
+    `;
+
+    if (search) {
+      totalRecordQuery += ` WHERE OrdMast.OCName LIKE :search `;
+    }
+
+    const totalRecordResult = await sequelize.query(totalRecordQuery, {
+      replacements: {
+        search: `%${search}%`,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const totalRecord = totalRecordResult[0]?.totalRecord || 0;
+    const totalPage = Math.ceil(totalRecord / limit);
 
     let orderQuery = `
-            SELECT 
-                OrdMast.OrdNo,
-                OrdMast.Odate,
-                MIN(OrdMast.OCName) AS OCName,
-                MIN(OrdMast.OCity) AS OCity,
-                MIN(OrdMast.PlaceState) AS PlaceState,
-                MIN(OrdMast.Pline) AS Pline,
-                MIN(OrdMast.OStatus) AS OStatus,
-                MIN(SEName.SEName) AS SEName,
-                SUM(OrdSubItem.G1) AS G1,
-                SUM(OrdSubItem.G2) AS G2,
-                SUM(OrdSubItem.G3) AS G3,
-                SUM(OrdSubItem.G4) AS G4
-            FROM OrdMast
-            INNER JOIN CustName ON OrdMast.CCode = CustName.CCode
-            INNER JOIN SEName ON CustName.SECode = SEName.SECode
-            INNER JOIN OrdSubItem ON OrdMast.OrdNo = OrdSubItem.OrdNo
-            INNER JOIN SubDesign ON OrdSubItem.GenSrNo = SubDesign.GenSrNo
-        `;
+        SELECT 
+            OrdMast.OrdNo,
+            OrdMast.Odate,
+            MIN(OrdMast.OCName) AS OCName,
+            MIN(OrdMast.OCity) AS OCity,
+            MIN(OrdMast.PlaceState) AS PlaceState,
+            MIN(OrdMast.Pline) AS Pline,
+            MIN(OrdMast.OStatus) AS OStatus,
+            MIN(SEName.SEName) AS SEName,
+            SUM(OrdSubItem.G1) AS G1,
+            SUM(OrdSubItem.G2) AS G2,
+            SUM(OrdSubItem.G3) AS G3,
+            SUM(OrdSubItem.G4) AS G4
+        FROM [csstock].[dbo].[OrdMast]
+        INNER JOIN [csstock].[dbo].[CustName] ON OrdMast.CCode = CustName.CCode
+        INNER JOIN [csstock].[dbo].[SEName] ON CustName.SECode = SEName.SECode
+        INNER JOIN [csstock].[dbo].[OrdSubItem] ON OrdMast.OrdNo = OrdSubItem.OrdNo
+        INNER JOIN [csstock].[dbo].[SubDesign] ON OrdSubItem.GenSrNo = SubDesign.GenSrNo
+    `;
 
     if (search) {
       orderQuery += ` WHERE OrdMast.OCName LIKE :search `;
     }
 
     orderQuery += `
-            GROUP BY OrdMast.OrdNo, OrdMast.Odate
-            ORDER BY OrdMast.Odate DESC;
-        `;
+        GROUP BY OrdMast.OrdNo, OrdMast.Odate
+        ORDER BY OrdMast.Odate DESC
+        OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;
+    `;
 
     const orders = await sequelize.query(orderQuery, {
       replacements: {
@@ -813,37 +1319,43 @@ export const getOrderDetails = async (req, res) => {
     });
 
     if (!orders.length) {
-      return res
-        .status(200)
-        .json({ status: 200, success: true, count: 0, data: [] });
+      return res.status(200).json({
+        status: 200,
+        success: true,
+        totalRecord,
+        totalPage,
+        currentPage: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        data: [],
+      });
     }
 
     const orderNos = orders.map((order) => order.OrdNo);
     const orderNosStr = orderNos.join(",");
 
     const orderCountsQuery = `
-            SELECT 
-                OrdNo, 
-                SUM(CTotQty) AS TotalQty, 
-                SUM(Cwt) AS TotalWeight, 
-                SUM(RdTotQty) AS ReadyQty, 
-                SUM(Rdwt) AS ReadyWeight, 
-                SUM(NRdTotQty) AS NotReadyQty, 
-                SUM(NRdwt) AS NotReadyWeight
-            FROM OrdMast
-            WHERE OrdNo IN (${orderNosStr})
-            GROUP BY OrdNo;
-        `;
+        SELECT 
+            OrdNo, 
+            SUM(CTotQty) AS TotalQty, 
+            SUM(Cwt) AS TotalWeight, 
+            SUM(RdTotQty) AS ReadyQty, 
+            SUM(Rdwt) AS ReadyWeight, 
+            SUM(NRdTotQty) AS NotReadyQty, 
+            SUM(NRdwt) AS NotReadyWeight
+        FROM [csstock].[dbo].[OrdMast]
+        WHERE OrdNo IN (${orderNosStr})
+        GROUP BY OrdNo;
+    `;
 
     const R_NR_Query = `
-            SELECT 
-                OrdSubItem.OrdNo, 
-                OrdSubItem.OrdCN, 
-                COUNT(*) AS RecordCount
-            FROM OrdSubItem 
-            WHERE OrdSubItem.OrdNo IN (${orderNosStr})
-            GROUP BY OrdSubItem.OrdNo, OrdSubItem.OrdCN;
-        `;
+        SELECT 
+            OrdSubItem.OrdNo, 
+            OrdSubItem.OrdCN, 
+            COUNT(*) AS RecordCount
+        FROM [csstock].[dbo].[OrdSubItem] 
+        WHERE OrdSubItem.OrdNo IN (${orderNosStr})
+        GROUP BY OrdSubItem.OrdNo, OrdSubItem.OrdCN;
+    `;
 
     const orderCounts = await sequelize.query(orderCountsQuery, {
       type: sequelize.QueryTypes.SELECT,
@@ -910,7 +1422,10 @@ export const getOrderDetails = async (req, res) => {
     res.status(200).json({
       status: 200,
       success: true,
-      count: responseData.length,
+      totalRecord,
+      currentPage: parseInt(page, 10),
+      totalPage,
+      limit: parseInt(limit, 10),
       data: responseData,
     });
   } catch (error) {
@@ -1060,7 +1575,6 @@ export const getTotalOrderCount_By_OrderID = async (req, res) => {
 };
 
 // get order description by order id
-
 export const getOrderDescriptionByID = async (req, res) => {
   try {
     const { ordNo } = req.params;
@@ -1153,9 +1667,10 @@ export const getOrderDescriptionByID = async (req, res) => {
   }
 };
 // get total stock count
-export const getTotalStockCount = async (req, res) => {
+/* export const getTotalStockCount = async (req, res) => {
   try {
-    const sequelize = req.sequelize;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
     const todayDate = new Date().toISOString().split("T")[0];
 
@@ -1163,6 +1678,55 @@ export const getTotalStockCount = async (req, res) => {
       todayOrder: `SELECT SUM(RTotQty) AS total_orders FROM OrdMast where Odate = ?`,
       bookingStock: `SELECT Sum(OrdSubItem.Gtot) AS booking_stock FROM OrdSubItem WHERE OrdSubItem.OrdCN = 0`,
       totalStock: `SELECT Sum(SubDesign.Gtot) AS total_stock FROM SubDesign`,
+    };
+
+    const [
+      [{ total_stock = 0 }],
+      [{ booking_stock = 0 }],
+      [{ total_orders = 0 }],
+    ] = await Promise.all([
+      sequelize.query(queries.totalStock, {
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(queries.bookingStock, {
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(queries.todayOrder, {
+        replacements: [todayDate],
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
+
+    res.status(200).json({
+      status: 200,
+      success: true,
+      total_stock: Number(total_stock),
+      booking_stock: Number(booking_stock),
+      after_order_stock: Number(total_stock) - Number(booking_stock),
+      today_orders: Number(total_orders),
+    });
+  } catch (error) {
+    console.error(`Error fetching stock count: ${error.message}`, error);
+    res.status(500).json({
+      status: 500,
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+}; */
+
+export const getTotalStockCount = async (req, res) => {
+  try {
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
+
+    const todayDate = new Date().toISOString().split("T")[0];
+
+    const queries = {
+      todayOrder: `SELECT SUM(RTotQty) AS total_orders FROM [csstock].[dbo].[OrdMast] WHERE Odate = ?`,
+      bookingStock: `SELECT SUM([csstock].[dbo].[OrdSubItem].Gtot) AS booking_stock FROM [csstock].[dbo].[OrdSubItem] WHERE OrdSubItem.OrdCN = 0`,
+      totalStock: `SELECT SUM([csstock].[dbo].[SubDesign].Gtot) AS total_stock FROM [csstock].[dbo].[SubDesign]`,
     };
 
     const [
@@ -1625,9 +2189,11 @@ export const PlaceOrder = async (req, res) => {
   }
 }; */
 
+// NEW AddToCart
 export const AddToCart = async (req, res) => {
   try {
-    req.sequelize = await authDbConnection();
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
     const { gencode, shcode, ccode, orders, orm, user_id } = req.body;
 
@@ -2041,11 +2607,12 @@ export const GetCart = async (req, res) => {
 
 export const getGrName = async (req, res) => {
   try {
-    const sequelize = req.sequelize;
+    let sequelize = req.sequelize;
+    if (!sequelize) sequelize = await authDbConnection();
 
     // Fetch all records using raw SQL query
     const result = await sequelize.query(
-      `SELECT GrCode, GrName, GrNameC, GrAct FROM csstock.dbo.GrName;`,
+      `SELECT GrCode, GrName, GrNameC, GrAct FROM [csstock].[dbo].[GrName];`,
       { type: sequelize.QueryTypes.SELECT }
     );
 
